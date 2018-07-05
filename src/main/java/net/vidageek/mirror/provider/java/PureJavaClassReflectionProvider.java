@@ -5,7 +5,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import net.vidageek.mirror.exception.ReflectionProviderException;
 import net.vidageek.mirror.matcher.ClassArrayMatcher;
@@ -13,6 +16,9 @@ import net.vidageek.mirror.matcher.MatchType;
 import net.vidageek.mirror.provider.ClassReflectionProvider;
 
 public final class PureJavaClassReflectionProvider<T> implements ClassReflectionProvider<T> {
+	private static final Map<Class<?>, List<Method>> allMethodsCache = new ConcurrentHashMap<Class<?>, List<Method>>();
+	private static final Map<Class<?>, List<Field>> allFieldsCache = new ConcurrentHashMap<Class<?>, List<Field>>();
+	private static final Map<Class<?>, List<Constructor<?>>> allConstructorsCache = new ConcurrentHashMap<Class<?>, List<Constructor<?>>>();
 
 	private Class<T> clazz;
 
@@ -39,30 +45,37 @@ public final class PureJavaClassReflectionProvider<T> implements ClassReflection
 	}
 
 	public List<Field> reflectAllFields() {
-		final List<Field> list = new ArrayList<Field>();
-
-		for (Class<?> current = clazz; current != null; current = current.getSuperclass()) {
-			for (Field field : current.getDeclaredFields()) {
-				list.add(field);
-			}
-
-			for (Class<?> interf : current.getInterfaces()) {
-				for (Field field : interf.getDeclaredFields()) {
+		List<Field> list = (List) PureJavaClassReflectionProvider.allFieldsCache.get(clazz);
+		if (list == null) {
+			list = new ArrayList<Field>();
+			for (Class<?> current = clazz; current != null; current = current.getSuperclass()) {
+				for (Field field : current.getDeclaredFields()) {
 					list.add(field);
 				}
+				for (Class<?> interf : current.getInterfaces()) {
+					for (Field field : interf.getDeclaredFields()) {
+						list.add(field);
+					}
+				}
 			}
+
+			PureJavaClassReflectionProvider.allFieldsCache.put(clazz, list);
 		}
 
 		return list;
 	}
 
 	public List<Method> reflectAllMethods() {
-		final List<Method> list = new ArrayList<Method>();
+		List<Method> list = (List) PureJavaClassReflectionProvider.allMethodsCache.get(clazz);
 
-		for (Class<?> current = clazz; current != null; current = current.getSuperclass()) {
-			for (Method method : current.getDeclaredMethods()) {
-				list.add(method);
+		if (list == null) {
+			list = new ArrayList<Method>();
+			for (Class<?> current = clazz; current != null; current = current.getSuperclass()) {
+				for (Method method : current.getDeclaredMethods()) {
+					list.add(method);
+				}
 			}
+			PureJavaClassReflectionProvider.allMethodsCache.put(clazz, list);
 		}
 
 		return list;
@@ -72,7 +85,12 @@ public final class PureJavaClassReflectionProvider<T> implements ClassReflection
 	// Constructor<?>[], I would be really glad.
 	@SuppressWarnings("unchecked")
 	public List<Constructor<T>> reflectAllConstructors() {
-		return (List) Arrays.asList(clazz.getDeclaredConstructors());
+		List<Constructor<T>> list = (List) PureJavaClassReflectionProvider.allConstructorsCache.get(clazz);
+		if (list == null) {
+			list = (List) Arrays.asList(clazz.getDeclaredConstructors());
+			PureJavaClassReflectionProvider.allConstructorsCache.put(clazz, (List) list);
+		}
+		return list;
 	}
 
 	public Constructor<T> reflectConstructor(final Class<?>[] argumentTypes) {
